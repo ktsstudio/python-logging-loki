@@ -1,0 +1,4 @@
+rfc3339>=6.1
+requests
+pytest
+freezegun

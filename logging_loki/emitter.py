@@ -6,7 +6,7 @@ import functools
 import logging
 import time
 from logging.config import ConvertingDict
-from typing import Any
+from typing import Any, Mapping
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -30,7 +30,12 @@ class LokiEmitter(abc.ABC):
     label_replace_with = const.label_replace_with
     session_class = requests.Session
 
-    def __init__(self, url: str, tags: Optional[dict] = None, auth: BasicAuth = None):
+    def __init__(self,
+                 url: str,
+                 tags: Optional[dict] = None,
+                 auth: BasicAuth = None,
+                 tenant_id: Optional[str] = None,
+                 headers: Optional[Mapping[str, Any]] = None):
         """
         Create new Loki emitter.
 
@@ -46,15 +51,28 @@ class LokiEmitter(abc.ABC):
         self.url = url
         #: Optional tuple with username and password for basic authentication.
         self.auth = auth
+        #: Optional tenant_id
+        self.tenant_id = tenant_id
+        #: Optional extra headers
+        self.headers = headers or {}
+
+        if 'X-Scope-OrgId' not in self.headers and self.tenant_id is not None:
+            self.headers['X-Scope-OrgId'] = self.tenant_id
 
         self._session: Optional[requests.Session] = None
 
     def __call__(self, record: logging.LogRecord, line: str):
         """Send log record to Loki."""
         payload = self.build_payload(record, line)
-        resp = self.session.post(self.url, json=payload)
+        resp = self.session.post(self.url,
+                                 json=payload,
+                                 headers=self.headers)
+        print(payload, self.headers, resp.status_code, resp.text)
         if resp.status_code != self.success_response_code:
-            raise ValueError("Unexpected Loki API response status code: {0}".format(resp.status_code))
+            raise ValueError(
+                "Unexpected Loki API response status code: {0}: {1}".format(
+                    resp.status_code, resp.text)
+            )
 
     @abc.abstractmethod
     def build_payload(self, record: logging.LogRecord, line) -> dict:
